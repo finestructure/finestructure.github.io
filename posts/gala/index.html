@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8"/>
+		<meta name="og:site_name" content="finestructure"/>
+		<link rel="canonical" href="https://finestructure.co/posts/gala"/>
+		<meta name="twitter:url" content="https://finestructure.co/posts/gala"/>
+		<meta name="og:url" content="https://finestructure.co/posts/gala"/>
+		<title>Enhance your SwiftUI previews with 🎭 Gala | finestructure</title>
+		<meta name="twitter:title" content="Enhance your SwiftUI previews with 🎭 Gala | finestructure"/>
+		<meta name="og:title" content="Enhance your SwiftUI previews with 🎭 Gala | finestructure"/>
+		<meta name="description" content="An independent software development company"/>
+		<meta name="twitter:description" content="An independent software development company"/>
+		<meta name="og:description" content="An independent software development company"/>
+		<meta name="twitter:card" content="summary"/>
+		<link rel="stylesheet" href="/fs-styles.css" type="text/css"/>
+		<link rel="stylesheet" href="/highlight.css" type="text/css"/>
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Mukta:300,800|Roboto+Mono&display=swap" type="text/css"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<link rel="shortcut icon" href="/images/favicon.png" type="image/png"/>
+		<link rel="alternate" href="/feed.rss" type="application/rss+xml" title="Subscribe to finestructure"/>
+		<meta name="twitter:image" content="https://finestructure.co/images/finestructure.png"/>
+		<meta name="og:image" content="https://finestructure.co/images/finestructure.png"/>
+	</head>
+	<body class="item-page">
+		<header>
+			<div class="wrapper">
+				<div class="navigation">
+					<a class="site-name" href="/">
+						<img src="/images/finestructure.png" width="400"/>
+					</a>
+					<nav>
+						<ul>
+							<li>
+								<a class="selected" href="/posts">Blog</a>
+							</li>
+							<li>
+								<a href="/about">About</a>
+							</li>
+						</ul>
+					</nav>
+				</div>
+			</div>
+		</header>
+		<div class="wrapper">
+			<article>
+				<div class="content"><h1>Enhance your SwiftUI previews with 🎭 Gala</h1><p>I switched to dark mode on my Mac recently and when doing so it occurred to me that I should really add previews for both colour schemes to my SwiftUI previews.</p><p>So off I went and wrote the following:</p><pre data-language="swift"><code>    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> previews: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">Group</span> {
+            <span class="hljs-type">ContentView</span>()
+                .environment(\.colorScheme, .light)
+
+            <span class="hljs-type">ContentView</span>()
+                .environment(\.colorScheme, .dark)
+        }
+    }
+</code></pre><p>That worked well enough but my left eye started twitching almost immediately at the thought that I’m going to have to duplicate this for every preview.</p><p>On top of that, most of my views take setup parameters or other configuration to make them look useful, like for instance this first one I was going to instrument:</p><pre data-language="swift"><code>    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> previews: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">SearchResultList</span>(query: <span class="hljs-string">""</span>,
+                         results: .constant([<span class="hljs-string">"foo"</span>, <span class="hljs-string">"bar"</span>, <span class="hljs-string">"bar"</span>]),
+                         selected: .constant(<span class="hljs-literal">nil</span>),
+                         show: <span class="hljs-literal">true</span>)
+            .padding()
+            .frame(width: <span class="hljs-number">400</span>, height: <span class="hljs-number">300</span>)
+    }
+</code></pre><p>If during refactoring I change any of the properties in <code>SearchResultList</code> I’m going to have to change it for both the dark and the light variant. Plus, I’m going to want to add further variants with other configurations, to see how it lays out in different situations – that’s all going to have to happen twice.</p><p>Clearly, that loop cannot remain unrolled! Because that’s what it really is, an unrolled loop.</p><p>After a bit of poking around I discovered* that you can actually use <code>ForEach</code> to loop over <code>ColorScheme</code> attributes:</p><pre data-language="swift"><code>    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> previews: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">ForEach</span>([<span class="hljs-type">ColorScheme</span>.light, .dark], id: \.<span class="hljs-keyword">self</span>) { scheme <span class="hljs-keyword">in</span>
+            <span class="hljs-type">SearchResultList</span>(query: <span class="hljs-string">""</span>,
+                             results: .constant([<span class="hljs-string">"foo"</span>, <span class="hljs-string">"bar"</span>, <span class="hljs-string">"bar"</span>]),
+                             selected: .constant(<span class="hljs-literal">nil</span>), show: <span class="hljs-literal">true</span>)
+                .padding()
+                .frame(width: <span class="hljs-number">400</span>, height: <span class="hljs-number">300</span>)
+                .environment(\.colorScheme, scheme)
+        }
+    }
+</code></pre><p><a href="https://twitter.com/_sa_s/status/1219892293030813696">My tweet</a> about this discovery was surprisingly popular and led me to explore this further, because while the <code>ForEach</code> loop is certainly a big improvement it still irked me that I’d have to spell out the list of colour schemes each time. (Yes, I’ll happily spend a day saving the work of an hour 😳.)</p><p>Anyway, this should be wrappable somehow – and indeed it is. Thanks to Function Builder’s <code>ViewBuilder</code>, we can create the following wrapper:</p><pre data-language="swift"><code><span class="hljs-keyword">public</span> <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">NightAndDay</span>&lt;A: View&gt;<span class="hljs-params">(<span class="hljs-number">_</span> name: String? = <span class="hljs-literal">nil</span>,
+                                 @ViewBuilder items: @escaping <span class="hljs-params">()</span></span></span> -&gt; <span class="hljs-type">A</span>) -&gt; some <span class="hljs-type">View</span> {
+    <span class="hljs-type">ForEach</span>([<span class="hljs-type">ColorScheme</span>.light, .dark], id: \.<span class="hljs-keyword">self</span>) { scheme <span class="hljs-keyword">in</span>
+        items()
+            .previewDisplayName(name.<span class="hljs-built_in">map</span> { <span class="hljs-string">"\($0) \(scheme)"</span> } ?? <span class="hljs-string">"\(scheme)"</span>)
+            .environment(\.colorScheme, scheme)
+    }
+}
+</code></pre><p>and then use it as follows:</p><pre data-language="swift"><code>   <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> previews: some <span class="hljs-type">View</span> {
+       <span class="hljs-type">NightAndDay</span> {
+           <span class="hljs-type">ContentView</span>()
+       }
+   }
+</code></pre><p>It’s like night and … 😶</p><p>Of course, once I’m down a rabbit hole I’m going to make myself really comfortable and explore the corners.</p><p>Wouldn’t it be nice to have little wrappers for other attributes as well? And wouldn’t it be nice to have that in a package rather than copy functions around?</p><p>So from the rabbit hole I emerge with Gala, a little swift package manager library that brings you <code>NightAndDay</code> and some other helpers, like for instance <code>Layouts</code>:</p><pre data-language="undefined"><code>
+    static var previews: some View {
+        Layouts([.fixed(width: 200, height: 150),
+                 .sizeThatFits,
+                 .device], "Home") {
+                ContentView()
+        }
+    }
+</code></pre><img src="https://f000.backblazeb2.com/file/finestructure-public-images/post-2020-002-1.png" width=380 /><p>Of course, if you really like scrolling your preview screen you’ll nest these</p><pre data-language="swift"><code>    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> previews: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">NightAndDay</span> {
+            <span class="hljs-type">Layouts</span>([.fixed(width: <span class="hljs-number">200</span>, height: <span class="hljs-number">150</span>),
+                     .sizeThatFits,
+                     .device], <span class="hljs-string">"Home"</span>) {
+                    <span class="hljs-type">ContentView</span>()
+            }
+        }
+    }
+</code></pre><p>Gala also brings a <code>Device</code> iterator that allows you to render to different device screens without having to guess the stringly initialiser argument of <code>PreviewDevice</code>:</p><pre data-language="swift"><code>    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> previews: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">Devices</span>([ .iPhoneX, .iPhone11, .iPhone11Pro ]) {
+                <span class="hljs-type">ContentView</span>()
+        }
+    }
+</code></pre><p>Thanks to autocompletion you don't have to remember the precise names. Please note that I’ve taken particular care to transform Apple's fantastic product names into identifiers. For instance:</p><ul><li><code>iPadPro9·7inch</code></li><li><code>iPhoneXʀ</code></li><li><code>appleWatchSeries5﹘40mm</code></li></ul><p>Thanks to Swift's support of unicode in identifiers you can use these free of ugly underscores (and thanks to autocomplete you can actually type them 😅).</p><p>You can also use <code>Devices.iPhones</code> (<code>iPads</code>, <code>watches</code>, <code>tvs</code>) to preview all of them:</p><pre data-language="swift"><code>    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> previews: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">Devices</span>(.iPhones) {
+            <span class="hljs-type">ContentView</span>()
+        }
+    }
+</code></pre><p>You can find <a href="https://github.com/finestructure/Gala">Gala on Github</a>. Simply import it as a Swift Package into your Xcode project and off you go.</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/post-2020-002-2.png" width=780 /><p>I hope you find it useful. Please get in touch via <a href="https://twitter.com/_sa_s">Twitter</a> or <a href="mailto:sas+blog@finestructure.co">email</a>if you have questions or via Github if you have fixes or can think of improvements.</p><p>* I’ve since found while researching other attributes to loop over for this blog post that the <code>ForEach</code> loop trick has been mentioned in <a href="https://developer.apple.com/wwdc19/233">WWDC19 session 233 “Mastering Xcode Previews”</a>.</p></div>
+				<span>Tagged with: </span>
+				<ul class="tag-list"></ul>
+			</article>
+		</div>
+		<footer>
+			<div class="wrapper">
+				<div id="container">
+					<div id="left-footer"></div>
+					<div id="mid-footer"></div>
+					<div id="right-footer">
+						<p align="right">
+							<a href="/feed.rss">RSS feed</a>
+						</p>
+					</div>
+				</div>
+			</div>
+		</footer>
+	</body>
+</html>

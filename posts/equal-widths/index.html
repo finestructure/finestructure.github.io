@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8"/>
+		<meta name="og:site_name" content="finestructure"/>
+		<link rel="canonical" href="https://finestructure.co/posts/equal-widths"/>
+		<meta name="twitter:url" content="https://finestructure.co/posts/equal-widths"/>
+		<meta name="og:url" content="https://finestructure.co/posts/equal-widths"/>
+		<title>SwiftUI: Equal widths view constraints | finestructure</title>
+		<meta name="twitter:title" content="SwiftUI: Equal widths view constraints | finestructure"/>
+		<meta name="og:title" content="SwiftUI: Equal widths view constraints | finestructure"/>
+		<meta name="description" content="An independent software development company"/>
+		<meta name="twitter:description" content="An independent software development company"/>
+		<meta name="og:description" content="An independent software development company"/>
+		<meta name="twitter:card" content="summary"/>
+		<link rel="stylesheet" href="/fs-styles.css" type="text/css"/>
+		<link rel="stylesheet" href="/highlight.css" type="text/css"/>
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Mukta:300,800|Roboto+Mono&display=swap" type="text/css"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<link rel="shortcut icon" href="/images/favicon.png" type="image/png"/>
+		<link rel="alternate" href="/feed.rss" type="application/rss+xml" title="Subscribe to finestructure"/>
+		<meta name="twitter:image" content="https://finestructure.co/images/finestructure.png"/>
+		<meta name="og:image" content="https://finestructure.co/images/finestructure.png"/>
+	</head>
+	<body class="item-page">
+		<header>
+			<div class="wrapper">
+				<div class="navigation">
+					<a class="site-name" href="/">
+						<img src="/images/finestructure.png" width="400"/>
+					</a>
+					<nav>
+						<ul>
+							<li>
+								<a class="selected" href="/posts">Blog</a>
+							</li>
+							<li>
+								<a href="/about">About</a>
+							</li>
+						</ul>
+					</nav>
+				</div>
+			</div>
+		</header>
+		<div class="wrapper">
+			<article>
+				<div class="content"><h1>SwiftUI: Equal widths view constraints</h1><p>I love SwiftUI. It’s such a great technology and so much fun to use. And it recently sent me on a days long tangent to figure out a problem that used to be quite simple.</p><p>All I wanted to do was lay out something like this window on macOS:</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/post-2020-001-1.png" width=412 /><p>The only “tricky” thing with this is the requirement that both buttons be equal width and size-to-fit for the button with the longest title text.</p><p>Using Auto Layout, you simply create the buttons and add an “Equal Width” constraint and the layout mechanics take care of the details.</p><p>Now if you know of a simple way to do this in SwiftUI, please stop reading and email me. To the best of my knowledge this is not straightforward. You need to use what I’d consider the advanced feature of preferences to communicate the maximum width between the buttons.</p><p>I eventually arrived at the following solution, which I actually find quite nice and generic but took a while to assemble:</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">ContentView</span>: <span class="hljs-title">View</span> </span>{
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> foo = <span class="hljs-string">"Foo"</span>
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> bar = <span class="hljs-string">"Bar"</span>
+    <span class="hljs-class"><span class="hljs-keyword">enum</span> <span class="hljs-title">RightColumnWidth</span>: <span class="hljs-title">Preference</span> </span>{}
+    <span class="hljs-keyword">let</span> rightColumnWidth = <span class="hljs-type">GeometryPreferenceReader</span>(
+        key: <span class="hljs-type">AppendValue</span>&lt;<span class="hljs-type">RightColumnWidth</span>&gt;.<span class="hljs-keyword">self</span>,
+        value: { [$<span class="hljs-number">0</span>.size.width] }
+    )
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> width: <span class="hljs-type">CGFloat?</span> = <span class="hljs-literal">nil</span>
+
+    <span class="hljs-keyword">var</span> body: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">VStack</span> {
+            <span class="hljs-type">HStack</span> {
+                <span class="hljs-type">TextField</span>(<span class="hljs-string">"Short"</span>, text: $foo)
+                <span class="hljs-type">Button</span>(action: {}) {
+                    <span class="hljs-type">Text</span>(<span class="hljs-string">"Short"</span>)
+                        .read(rightColumnWidth)
+                        .frame(width: width)
+                }
+            }
+            <span class="hljs-type">HStack</span> {
+                <span class="hljs-type">TextField</span>(<span class="hljs-string">"Bar"</span>, text: $bar)
+                <span class="hljs-type">Button</span>(action: {}) {
+                    <span class="hljs-type">Text</span>(<span class="hljs-string">"Looooong"</span>)
+                        .read(rightColumnWidth)
+                        .frame(width: width)
+                }
+            }
+        }
+        .assignMaxPreference(<span class="hljs-keyword">for</span>: rightColumnWidth.key, to: $width)
+    }
+}
+</code></pre><p>There are a few details hidden off-screen here but they are reusable machinery that you write once and can move into its own file somewhere.</p><p>The following describes the journey and the full details.</p><h2>First steps</h2><p>At the start of every problem is a web search and it quickly became obvious that a) I’m not alone in trying to figure this out, b) it’s definitely not a simple three liner, and c) I’ll be regretting my OCD for not just getting the width of the widest button and hardcoding it for all of them.</p><p>The first lead I stumbled across was, of course, a <a href="https://stackoverflow.com/questions/56623310/swiftui-login-page-layout">Stackoverflow question</a> by Mostafa Mohamed Raafat. He was asking for help with the following layout (on iOS, but thanks to SwiftUI most of this is practically the same on macOS):</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/post-2020-001-2.png" width=412 /><p>This looked like a good start and though I wasn’t too thrilled that <a href="https://stackoverflow.com/questions/56623310/swiftui-login-page-layout/56673501#56673501">the top answer</a> by Rob Mayoff was dealing with preferences it nonetheless looked like that part can be nicely abstracted away.</p><p>Not that there is anything wrong with preferences – it just seems an odd bit of boilerplate required for something to seemingly mundane as equal widths. (I understand that it sort of has to be that way, because there is no constraint solver in SwiftUI but still – it was a surprising amount of effort.)</p><p>So I plugged it into my project, adapted it for buttons and got this preview – sweet.</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/post-2020-001-3.png" width=373 /><p>And then I ran it.</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/post-2020-001-4.png" width=412 /><p>🤔</p><p>Bizarrely, it seems like at runtime the button <code>Text</code>s get pinned to width zero immediately, before their intrinsic sizes can be read and propagated by the preference system.</p><p>It might have something to do with how the <code>Text</code> is wrapped in a <code>Button</code>. I tried various ways of applying the <code>frame</code> inside and outside the <code>Button</code> and I did not find a way to get it to work at runtime with the method outlined in the Stackoverflow post.</p><p>This is actually the first time I’ve seen a discrepancy between preview and device rendering.</p><h2>Attempt 2</h2><p>In my search for solutions I also came across a <a href="https://medium.com/better-programming/using-the-preferencekey-protocol-to-align-views-7f3ae32f60fc">post by Keith Lander</a> who’s using <code>PreferenceKey</code> to apply equal widths to labels. His approach is very similar to Rob Mayoff’s but of course when you’re stuck you better try everything and anything.</p><p>And in fact it turns out Keith’s approach fixes the issue for the buttons (while also working for labels).</p><p>Now instead of simply taking Keith’s solution and applying it, I merged it with my previous attempt to generalise size constraint propagation in SwiftUI and in the following I’ll lay out (hah) that solution.</p><h2>The general principle</h2><p>Before we dive in, for those who haven’t read the underlying posts at all or in detail, the way the <code>PreferenceKey</code> mechanism works is the following:</p><p>You define a type conforming to the <code>PreferenceKey</code> protocol which holds data of type <code>V</code> you want to gather and a reducer, which aggregates into that data structure.</p><p>You trigger aggregation by applying a view modifier <code>preference(key: K.self, value: V)</code> where <code>K</code> is your <code>PreferenceKey</code> type and <code>V</code> is the data type you defined. You’ll aggregate from all the places you call this view modifier. That’s why you define a reducer on <code>K</code>. (If this sounds a little abstract at the moment, don’t worry - it should become clearer further down.)</p><p>Finally, you call the <code>onPreferenceChange(key: K.self, perform: (V) -&gt; Void)</code> view modifier to do something whenever your preferences change. This is where we extract the reduced value associated with your <code>PreferenceKey</code>.</p><h2>The <code>PreferenceKey</code> struct</h2><p>So onwards to the actual implementation. What we need to do first is define our <code>PreferenceKey</code> type to hold the width(s):</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">AppendValue</span>&lt;<span class="hljs-title">T</span>: <span class="hljs-title">Preference</span>&gt;: <span class="hljs-title">PreferenceKey</span> </span>{
+    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> defaultValue: [<span class="hljs-type">CGFloat</span>] { [] }
+    <span class="hljs-keyword">static</span> <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">reduce</span><span class="hljs-params">(value: <span class="hljs-keyword">inout</span> Value, nextValue: <span class="hljs-params">()</span></span></span> -&gt; <span class="hljs-type">Value</span>) {
+        value.append(contentsOf: nextValue())
+    }
+    <span class="hljs-keyword">typealias</span> <span class="hljs-type">Value</span> = [<span class="hljs-type">CGFloat</span>]
+}
+</code></pre><p>As you can see, we choose <code>[CGFloat]</code> as our value and we reduce by appending.</p><p>This is actually one of the important differences between the first and the second approach: In case of <code>Text</code> labels, it suffices to define the reducer simply in terms of a maximum and the data type as a straight <code>CGFloat</code>.</p><p>The approach of using an array works in both cases and therefore is more generally applicable. Since it abstracts away (as you’ll see), it’s probably best to simply use this solution in either case.</p><h2>What is <code>T: Preference</code>?</h2><p>Now you’re probably looking at that struct declaration and are wondering why on earth it is generic over <code>T: Preference</code>.</p><p>This is actually something you can completely ignore (and remove) if all you are collecting is a single preference. Just drop the <code>&lt;T: Preference&gt;</code> part and move on.</p><p>However, if for instance you have two different columns with different maximum widths you need to measure, you will need to define two distinct types for their <code>PreferenceKey</code>s.</p><p>And so instead of simple copying (and repeating) the complete <code>AppendValue</code> declaration with a different name we declare an empty protocol and a phantom type to achieve the same thing:</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">protocol</span> <span class="hljs-title">Preference</span> </span>{}
+<span class="hljs-class"><span class="hljs-keyword">enum</span> <span class="hljs-title">WidthLeftColumn</span>: <span class="hljs-title">Preference</span> </span>{}
+<span class="hljs-class"><span class="hljs-keyword">enum</span> <span class="hljs-title">WidhtRightColumn</span>: <span class="hljs-title">Preference</span> </span>{}
+<span class="hljs-keyword">let</span> key1 = <span class="hljs-type">AppendValue</span>&lt;<span class="hljs-type">WidthLeftColumn</span>&gt;.<span class="hljs-keyword">self</span>
+<span class="hljs-keyword">let</span> key2 = <span class="hljs-type">AppendValue</span>&lt;<span class="hljs-type">WidthRightColumn</span>&gt;.<span class="hljs-keyword">self</span>
+</code></pre><p>If you’d like to learn more about phantom types, <a href="https://www.swiftbysundell.com/articles/phantom-types-in-swift/">John Sundell has you covered</a>. In the context of this post just treat it like a convenient labelling mechanism that avoids some code duplication.</p><h2>Calling <code>preference(key:, value:)</code></h2><p>With this in place we can now look at calling the “reducer”. What we need to do is determine the width of the view we’re interested in and send it to the reducer.</p><p>The best way to get the width of a view is to use a <code>GeometryReader</code> on its background. For the measurement, we use a <code>Color.clear</code> view as follows:</p><pre data-language="swift"><code><span class="hljs-type">Button</span>(action: {}) {
+    <span class="hljs-type">Text</span>(<span class="hljs-string">"Short"</span>)
+        .background(<span class="hljs-type">GeometryReader</span> {
+            <span class="hljs-type">Color</span>.clear.preference(key: key2.<span class="hljs-keyword">self</span>,
+                                   value: [$<span class="hljs-number">0</span>.size.width])
+        })
+    ...
+</code></pre><h2>Assigning the preference value</h2><p>The last step is to react to preference changes and to update a tracking <code>@State</code> variable with changes that we’ve collected.</p><p>We define that variable as</p><pre data-language="swift"><code>@<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> width: <span class="hljs-type">CGFloat?</span> = <span class="hljs-literal">nil</span>
+</code></pre><p>and assign the preference value via</p><pre data-language="swift"><code>.onPreferenceChange(key2) { prefs <span class="hljs-keyword">in</span>
+    <span class="hljs-keyword">let</span> maxPref = prefs.<span class="hljs-built_in">reduce</span>(<span class="hljs-number">0</span>, <span class="hljs-built_in">max</span>)
+    <span class="hljs-keyword">if</span> maxPref &gt; <span class="hljs-number">0</span> {
+        <span class="hljs-comment">// only set value if &gt; 0 to avoid pinning sizes to zero</span>
+        <span class="hljs-keyword">self</span>.width = maxPref
+    }
+}
+</code></pre><p>Finally, we want to set the button label frame to this width via the <code>.frame()</code> modifier:</p><pre data-language="swift"><code>.frame(width: width)
+</code></pre><p>The complete <code>ContentView</code> looks as follows now:</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">ContentView</span>: <span class="hljs-title">View</span> </span>{
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> foo = <span class="hljs-string">"Foo"</span>
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> bar = <span class="hljs-string">"Bar"</span>
+
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> width: <span class="hljs-type">CGFloat?</span> = <span class="hljs-literal">nil</span>
+
+    <span class="hljs-keyword">var</span> body: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">VStack</span> {
+            <span class="hljs-type">HStack</span> {
+                <span class="hljs-type">TextField</span>(<span class="hljs-string">"Foo"</span>, text: $foo)
+                <span class="hljs-type">Button</span>(action: {}) {
+                    <span class="hljs-type">Text</span>(<span class="hljs-string">"Short"</span>)
+                        .background(<span class="hljs-type">GeometryReader</span> {
+                            <span class="hljs-type">Color</span>.clear.preference(
+                                key: key2.<span class="hljs-keyword">self</span>,
+                                value: [$<span class="hljs-number">0</span>.size.width]
+                            )
+                        })
+                        .frame(width: width)
+                }
+            }
+            <span class="hljs-type">HStack</span> {
+                <span class="hljs-type">TextField</span>(<span class="hljs-string">"Bar"</span>, text: $bar)
+                <span class="hljs-type">Button</span>(action: {}) {
+                    <span class="hljs-type">Text</span>(<span class="hljs-string">"Looooong"</span>)
+                        .background(<span class="hljs-type">GeometryReader</span> {
+                            <span class="hljs-type">Color</span>.clear.preference(
+                                key: key2.<span class="hljs-keyword">self</span>,
+                                value: [$<span class="hljs-number">0</span>.size.width]
+                            )
+                        })
+                        .frame(width: width)
+                }
+            }
+        }
+        .frame(maxWidth: <span class="hljs-number">300</span>, maxHeight: <span class="hljs-number">150</span>)
+        .onPreferenceChange(key2) { prefs <span class="hljs-keyword">in</span>
+            <span class="hljs-keyword">let</span> maxPref = prefs.<span class="hljs-built_in">reduce</span>(<span class="hljs-number">0</span>, <span class="hljs-built_in">max</span>)
+            <span class="hljs-keyword">if</span> maxPref &gt; <span class="hljs-number">0</span> {
+                <span class="hljs-comment">// only set value if &gt; 0 to avoid pinning sizes to zero</span>
+                <span class="hljs-keyword">self</span>.width = maxPref
+            }
+        }
+    }
+}
+
+<span class="hljs-comment">// extra declarations</span>
+
+<span class="hljs-class"><span class="hljs-keyword">protocol</span> <span class="hljs-title">Preference</span> </span>{}
+<span class="hljs-class"><span class="hljs-keyword">enum</span> <span class="hljs-title">RightColumnWidth</span>: <span class="hljs-title">Preference</span> </span>{}
+<span class="hljs-keyword">let</span> key2 = <span class="hljs-type">AppendValue</span>&lt;<span class="hljs-type">RightColumnWidth</span>&gt;.<span class="hljs-keyword">self</span>
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">AppendValue</span>&lt;<span class="hljs-title">T</span>: <span class="hljs-title">Preference</span>&gt;: <span class="hljs-title">PreferenceKey</span> </span>{
+    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> defaultValue: [<span class="hljs-type">CGFloat</span>] { [] }
+    <span class="hljs-keyword">static</span> <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">reduce</span><span class="hljs-params">(value: <span class="hljs-keyword">inout</span> Value, nextValue: <span class="hljs-params">()</span></span></span> -&gt; <span class="hljs-type">Value</span>) {
+        value.append(contentsOf: nextValue())
+    }
+    <span class="hljs-keyword">typealias</span> <span class="hljs-type">Value</span> = [<span class="hljs-type">CGFloat</span>]
+}
+</code></pre><p>That’s not so bad but there’s quite a bit of ceremony around reading and assigning the preferences that we could streamline.</p><h2>Refactoring</h2><p>There are three things we’ll want to improve:</p><ol><li>Turn <code>.background(...)</code> into a view modifier so that we can hide and de-duplicate the <code>GeometryReader</code> mechanics</li><li>Generalise the mechanism so that we can re-use it for any dimension, not just <code>width</code></li><li>Wrap the <code>onPreferenceChange</code> modifier to hide the gory details</li></ol><h2>A generic geometry reader</h2><p>The first and second point are actually intertwined. If we want to wrap <code>.background(...)</code> in its own modifier, we need to pass it two parameters: 1. the preference key (<code>key2.self</code>) 2. the value getter (<code>[$0.size.width]</code>) The easiest way to do this is to define a wrapper type <code>GeometryPreferenceReader</code> that holds these values:</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">GeometryPreferenceReader</span>&lt;<span class="hljs-title">K</span>: <span class="hljs-title">PreferenceKey</span>, <span class="hljs-title">V</span>&gt; <span class="hljs-title">where</span> <span class="hljs-title">K</span>.<span class="hljs-title">Value</span> == <span class="hljs-title">V</span> </span>{
+    <span class="hljs-keyword">let</span> key: <span class="hljs-type">K</span>.<span class="hljs-type">Type</span>
+    <span class="hljs-keyword">let</span> value: (<span class="hljs-type">GeometryProxy</span>) -&gt; <span class="hljs-type">V</span>
+}
+</code></pre><p>This is a simple struct that holds the preference key type and a closure to extract a value <code>V</code> from a <code>GeometryProxy</code> input parameter.</p><p>The only tricky bit here is defining the generic types: We need to make sure that the preference key <code>K</code> we’re passing in wraps the same <code>Value</code> type as we’re getting out of the closure. (This is probably fairly obvious but I find it’s easy to lose track of what goes where when dealing with generics.)</p><p>With that we can now write <code>key2</code> as follows:</p><pre data-language="swift"><code><span class="hljs-keyword">let</span> key2 = <span class="hljs-type">GeometryPreferenceReader</span>(
+    key: <span class="hljs-type">AppendValue</span>&lt;<span class="hljs-type">RightColumnWidth</span>&gt;.<span class="hljs-keyword">self</span>,
+    value: { [$<span class="hljs-number">0</span>.size.width] }
+)
+</code></pre><p>This is nice – we’ve combined the phantom type which is the key for the preference with the accessor to the geometry. We’ve tied these two together in a single place and simply deal with <code>key2</code> by itself from now on. This ensures we don’t accidentally mix up what value we pull into the preference in the various places where we read it.</p><h2><code>ViewModifier</code> conformance</h2><p>We’ve got a little further to go before we can fully use <code>key2</code> to read the preferences.</p><p>What we’d like to be able to do is the following:</p><pre data-language="swift"><code><span class="hljs-type">Text</span>(<span class="hljs-string">"Short"</span>)
+    .modifier(key2)
+</code></pre><p>This doesn’t read very well at the moment, but we’ll get to that.</p><p>To be able to use <code>key2</code> as a view modifier requires <code>GeometryPreferenceReader</code> to conform to the <code>ViewModifier</code> protocol. This is straightforward since it has access to the parameters we need:</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">extension</span> <span class="hljs-title">GeometryPreferenceReader</span>: <span class="hljs-title">ViewModifier</span> </span>{
+    <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">body</span><span class="hljs-params">(content: Content)</span></span> -&gt; some <span class="hljs-type">View</span> {
+        content
+            .background(<span class="hljs-type">GeometryReader</span> {
+                <span class="hljs-type">Color</span>.clear.preference(key: <span class="hljs-keyword">self</span>.key,
+                                       value: <span class="hljs-keyword">self</span>.value($<span class="hljs-number">0</span>))
+            })
+    }
+}
+</code></pre><p>We simply use our key type <code>self.key</code> and the closure <code>self.value</code> as parameters to the <code>.preference</code> call, passing in the <code>GeometryReader</code> as <code>$0</code> to the <code>value</code> closure.</p><h2>Assigning the preference to <code>$width</code></h2><p>We also need to update our <code>onPreferenceChange</code> assignment to use the new key definition, <code>key2.key</code> instead of <code>key2</code>:</p><pre data-language="swift"><code>.onPreferenceChange(key2.key) { prefs <span class="hljs-keyword">in</span>
+    <span class="hljs-keyword">let</span> maxPref = prefs.<span class="hljs-built_in">reduce</span>(<span class="hljs-number">0</span>, <span class="hljs-built_in">max</span>)
+    <span class="hljs-keyword">if</span> maxPref &gt; <span class="hljs-number">0</span> {
+        <span class="hljs-comment">// only set value if &gt; 0 to avoid pinning sizes to zero</span>
+        <span class="hljs-keyword">self</span>.width = maxPref
+    }
+}
+</code></pre><p>There’s another argument here to deal with readability, so let’s tackle the final small change and factor the preference update handler into its own view extension.</p><p>We’d like to write the above as follows:</p><pre data-language="swift"><code>.assignMaxPreference(<span class="hljs-keyword">for</span>: rightColumnWidth.key, to: $width)
+</code></pre><p>and for that we need to extend <code>View</code> with a function <code>assignMaxPreference</code>:</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">extension</span> <span class="hljs-title">View</span> </span>{
+    <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">assignMaxPreference</span>&lt;K: PreferenceKey&gt;<span class="hljs-params">(
+        <span class="hljs-keyword">for</span> key: K.<span class="hljs-keyword">Type</span>,
+        to binding: Binding&lt;CGFloat?&gt;)</span></span> -&gt; some <span class="hljs-type">View</span> <span class="hljs-keyword">where</span> <span class="hljs-type">K</span>.<span class="hljs-type">Value</span> == [<span class="hljs-type">CGFloat</span>] {
+
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">self</span>.onPreferenceChange(key.<span class="hljs-keyword">self</span>) { prefs <span class="hljs-keyword">in</span>
+            <span class="hljs-keyword">let</span> maxPref = prefs.<span class="hljs-built_in">reduce</span>(<span class="hljs-number">0</span>, <span class="hljs-built_in">max</span>)
+            <span class="hljs-keyword">if</span> maxPref &gt; <span class="hljs-number">0</span> {
+                <span class="hljs-comment">// only set value if &gt; 0 to avoid pinning sizes to zero</span>
+                binding.wrappedValue = maxPref
+            }
+        }
+    }
+}
+</code></pre><p>There is probably a way to make this method slightly more generic than around <code>CGFloat</code> but there’s no real value in doing so, since we’ll typically be dealing with values coming out of <code>GeometryReader</code>s. Also, <code>reduce(0)</code> limits how generic this can be and even if you avoid using <code>reduce</code> here you’ll end up needing the notion of a zero to initialise the wrapped value.</p><p>It’s simply easier to stick with <code>CGFloat</code> and step around the issue.</p><h2>Final clean up</h2><p>Now that we have all the bits in place we can make a couple of final tweaks to tidy things up. Let’s rename <code>key2</code> to <code>rightColumnWidth </code>:</p><pre data-language="swift"><code><span class="hljs-keyword">let</span> rightColumnWidth = <span class="hljs-type">GeometryPreferenceReader</span>(key: <span class="hljs-type">AppendValue</span>&lt;<span class="hljs-type">RightColumnWidth</span>&gt;.<span class="hljs-keyword">self</span>) { [$<span class="hljs-number">0</span>.size.width] }
+</code></pre><p>and add a little extension to <code>View</code> so we can write:</p><pre data-language="swift"><code>.read(rightColumnWidth)
+</code></pre><p>instead of <code>.modifier(rightColumnWidth)</code>:</p><pre data-language="swift"><code><span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">read</span>&lt;K: PreferenceKey, V&gt;<span class="hljs-params">(<span class="hljs-number">_</span> preference: GeometryPreferenceReader&lt;K, V&gt;)</span></span> -&gt; some <span class="hljs-type">View</span> {
+    modifier(preference)
+}
+</code></pre><p>With that, the final <code>ContentView</code> looks like this:</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">ContentView</span>: <span class="hljs-title">View</span> </span>{
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> foo = <span class="hljs-string">"Foo"</span>
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> bar = <span class="hljs-string">"Bar"</span>
+    <span class="hljs-class"><span class="hljs-keyword">enum</span> <span class="hljs-title">RightColumnWidth</span>: <span class="hljs-title">Preference</span> </span>{}
+    <span class="hljs-keyword">let</span> rightColumnWidth = <span class="hljs-type">GeometryPreferenceReader</span>(
+        key: <span class="hljs-type">AppendValue</span>&lt;<span class="hljs-type">RightColumnWidth</span>&gt;.<span class="hljs-keyword">self</span>,
+        value: { [$<span class="hljs-number">0</span>.size.width] }
+    )
+    @<span class="hljs-type">State</span> <span class="hljs-keyword">var</span> width: <span class="hljs-type">CGFloat?</span> = <span class="hljs-literal">nil</span>
+
+    <span class="hljs-keyword">var</span> body: some <span class="hljs-type">View</span> {
+        <span class="hljs-type">VStack</span> {
+            <span class="hljs-type">HStack</span> {
+                <span class="hljs-type">TextField</span>(<span class="hljs-string">"Foo"</span>, text: $foo)
+                <span class="hljs-type">Button</span>(action: {}) {
+                    <span class="hljs-type">Text</span>(<span class="hljs-string">"Short"</span>)
+                        .read(rightColumnWidth)
+                        .frame(width: width)
+                }
+            }
+            <span class="hljs-type">HStack</span> {
+                <span class="hljs-type">TextField</span>(<span class="hljs-string">"Bar"</span>, text: $bar)
+                <span class="hljs-type">Button</span>(action: {}) {
+                    <span class="hljs-type">Text</span>(<span class="hljs-string">"Looooong"</span>)
+                        .read(rightColumnWidth)
+                        .frame(width: width)
+                }
+            }
+        }
+        .frame(maxWidth: <span class="hljs-number">300</span>, maxHeight: <span class="hljs-number">150</span>)
+        .assignMaxPreference(<span class="hljs-keyword">for</span>: rightColumnWidth.key, to: $width)
+    }
+}
+</code></pre><p>With the following re-usable definitions:</p><pre data-language="swift"><code><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">GeometryPreferenceReader</span>&lt;<span class="hljs-title">K</span>: <span class="hljs-title">PreferenceKey</span>, <span class="hljs-title">V</span>&gt; <span class="hljs-title">where</span> <span class="hljs-title">K</span>.<span class="hljs-title">Value</span> == <span class="hljs-title">V</span> </span>{
+    <span class="hljs-keyword">let</span> key: <span class="hljs-type">K</span>.<span class="hljs-type">Type</span>
+    <span class="hljs-keyword">let</span> value: (<span class="hljs-type">GeometryProxy</span>) -&gt; <span class="hljs-type">V</span>
+}
+
+<span class="hljs-class"><span class="hljs-keyword">extension</span> <span class="hljs-title">GeometryPreferenceReader</span>: <span class="hljs-title">ViewModifier</span> </span>{
+    <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">body</span><span class="hljs-params">(content: Content)</span></span> -&gt; some <span class="hljs-type">View</span> {
+        content
+            .background(<span class="hljs-type">GeometryReader</span> {
+                <span class="hljs-type">Color</span>.clear.preference(key: <span class="hljs-keyword">self</span>.key,
+                                       value: <span class="hljs-keyword">self</span>.value($<span class="hljs-number">0</span>))
+            })
+    }
+}
+
+<span class="hljs-class"><span class="hljs-keyword">protocol</span> <span class="hljs-title">Preference</span> </span>{}
+
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">AppendValue</span>&lt;<span class="hljs-title">T</span>: <span class="hljs-title">Preference</span>&gt;: <span class="hljs-title">PreferenceKey</span> </span>{
+    <span class="hljs-keyword">static</span> <span class="hljs-keyword">var</span> defaultValue: [<span class="hljs-type">CGFloat</span>] { [] }
+    <span class="hljs-keyword">static</span> <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">reduce</span><span class="hljs-params">(value: <span class="hljs-keyword">inout</span> Value, nextValue: <span class="hljs-params">()</span></span></span> -&gt; <span class="hljs-type">Value</span>) {
+        value.append(contentsOf: nextValue())
+    }
+    <span class="hljs-keyword">typealias</span> <span class="hljs-type">Value</span> = [<span class="hljs-type">CGFloat</span>]
+}
+
+<span class="hljs-class"><span class="hljs-keyword">extension</span> <span class="hljs-title">View</span> </span>{
+    <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">assignMaxPreference</span>&lt;K: PreferenceKey&gt;<span class="hljs-params">(
+        <span class="hljs-keyword">for</span> key: K.<span class="hljs-keyword">Type</span>,
+        to binding: Binding&lt;CGFloat?&gt;)</span></span> -&gt; some <span class="hljs-type">View</span> <span class="hljs-keyword">where</span> <span class="hljs-type">K</span>.<span class="hljs-type">Value</span> == [<span class="hljs-type">CGFloat</span>] {
+
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">self</span>.onPreferenceChange(key.<span class="hljs-keyword">self</span>) { prefs <span class="hljs-keyword">in</span>
+            <span class="hljs-keyword">let</span> maxPref = prefs.<span class="hljs-built_in">reduce</span>(<span class="hljs-number">0</span>, <span class="hljs-built_in">max</span>)
+            <span class="hljs-keyword">if</span> maxPref &gt; <span class="hljs-number">0</span> {
+                <span class="hljs-comment">// only set value if &gt; 0 to avoid pinning sizes to zero</span>
+                binding.wrappedValue = maxPref
+            }
+        }
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">func</span> <span class="hljs-title">read</span>&lt;K: PreferenceKey, V&gt;<span class="hljs-params">(<span class="hljs-number">_</span> preference: GeometryPreferenceReader&lt;K, V&gt;)</span></span> -&gt; some <span class="hljs-type">View</span> {
+        modifier(preference)
+    }
+}
+</code></pre><p>And there we have it: a reusable way to propagate size constraints in SwiftUI.</p><p>Notably:</p><ul><li>We specify which dimension we are using in a single closure of shape <code>(GeometryReader) -&gt; V</code>. This can be a width, a height - anything or even any combination of things that <code>GeometryReader</code> can provide.</li><li>We can track multiple measurements simply by introducing different <code>GeometryPreferenceReaders</code> tagged by a phantom type.</li><li>Recording the preference is done via a call to the <code>.read(preference)</code> view modifier on each view that participates in the constraint, which is readable and concise.</li><li>The preference is applied in a single location by assigning it to a binding via <code>.assignMaxPreference(for: key, to: $width)</code>. That’s also readable and to the point.</li></ul><p>Note that this last step is one area where we may want to extend the system further, say for example if we want to track a minimum width.</p><p>In that case we could extend <code>View</code> with, say, <code>func assignMinPreference(for:To:)</code> and pick out the minimum value to assign to the binding.</p><p>I hope this may prove useful to others. If you have questions or know of a better way to achieve the same result, please let me know via <a href="https://twitter.com/_sa_s">Twitter</a> or <a href="mailto:sas+blog@finestructure.co">email</a>.</p></div>
+				<span>Tagged with: </span>
+				<ul class="tag-list"></ul>
+			</article>
+		</div>
+		<footer>
+			<div class="wrapper">
+				<div id="container">
+					<div id="left-footer"></div>
+					<div id="mid-footer"></div>
+					<div id="right-footer">
+						<p align="right">
+							<a href="/feed.rss">RSS feed</a>
+						</p>
+					</div>
+				</div>
+			</div>
+		</footer>
+	</body>
+</html>

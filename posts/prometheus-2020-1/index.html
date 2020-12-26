@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8"/>
+		<meta name="og:site_name" content="finestructure"/>
+		<link rel="canonical" href="https://finestructure.co/posts/prometheus-2020-1"/>
+		<meta name="twitter:url" content="https://finestructure.co/posts/prometheus-2020-1"/>
+		<meta name="og:url" content="https://finestructure.co/posts/prometheus-2020-1"/>
+		<title>Monitoring with Prometheus, Grafana &amp; Docker (Updated) | finestructure</title>
+		<meta name="twitter:title" content="Monitoring with Prometheus, Grafana &amp; Docker (Updated) | finestructure"/>
+		<meta name="og:title" content="Monitoring with Prometheus, Grafana &amp; Docker (Updated) | finestructure"/>
+		<meta name="description" content="A revised version of how to get started with Prometheus, Grafana & Docker."/>
+		<meta name="twitter:description" content="A revised version of how to get started with Prometheus, Grafana & Docker."/>
+		<meta name="og:description" content="A revised version of how to get started with Prometheus, Grafana & Docker."/>
+		<meta name="twitter:card" content="summary"/>
+		<link rel="stylesheet" href="/fs-styles.css" type="text/css"/>
+		<link rel="stylesheet" href="/highlight.css" type="text/css"/>
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Mukta:300,800|Roboto+Mono&display=swap" type="text/css"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<link rel="shortcut icon" href="/images/favicon.png" type="image/png"/>
+		<link rel="alternate" href="/feed.rss" type="application/rss+xml" title="Subscribe to finestructure"/>
+		<meta name="twitter:image" content="https://finestructure.co/images/finestructure.png"/>
+		<meta name="og:image" content="https://finestructure.co/images/finestructure.png"/>
+	</head>
+	<body class="item-page">
+		<header>
+			<div class="wrapper">
+				<div class="navigation">
+					<a class="site-name" href="/">
+						<img src="/images/finestructure.png" width="400"/>
+					</a>
+					<nav>
+						<ul>
+							<li>
+								<a class="selected" href="/posts">Blog</a>
+							</li>
+							<li>
+								<a href="/about">About</a>
+							</li>
+						</ul>
+					</nav>
+				</div>
+			</div>
+		</header>
+		<div class="wrapper">
+			<article>
+				<div class="content"><h1>Monitoring with Prometheus, Grafana &amp; Docker (Updated)</h1><h2>Introduction</h2><p>The most popular post on my blog is about setting up and configuring Prometheus and Grafana. I wrote this post in 2016 shortly after researching and deploying a monitoring solution for a startup.</p><p>Four years on I have to say that decision to go for Prometheus and Grafana has aged very, very well. I am still running that same setup, now across many more machines, and successfully.</p><p>Prometheus and Grafana, in combination with Docker, are such a great choice for small teams, because they allow you to get started with minimal fuss and then grow the system into something quite complex and very capable.</p><p>My decision to go with Prometheus and Grafana has aged well and so has mostly this blog post about it. Thanks to docker images and pinned versions almost everything still works – which is actually quite remarkable given the fast pace at which many parts of our tech stacks evolve.</p><p>Even things that work can do with a little maintenance every once in a while though and so it is time to give this blog post another coat of paint. I’ll be back in the mid 20s to see how everything is holding up!</p><h2>Original Introduction</h2><p>The choice of monitoring systems out there is overwhelming. When I first set up my current monitoring system for a handful of servers in 2016, it became clear that many of the go-to solutions like Nagios, Sensu, New Relic would be either too heavy or too expensive – or both.</p><p>What I really needed at the time was something lean I could spin up in a docker container and then ‘grow’ by extending the configuration or adding components as and when my needs change.</p><p>With those requirements in hand I soon came across Prometheus, a monitoring system and time series database, with its de-facto graphical front-end Grafana. I set it up for a trial run and it fit my needs perfectly.</p><p>While the set-up went fairly smoothly I did find some of the information on the web for similar set-ups slightly outdated and wanted to pull everything together in one place as a reference. This covers the as-of-writing current versions of Prometheus (0.18.0) and Grafana (3.0.1).</p><p>Because pictures are worth more than a thousand words, here’s what a Prometheus powered Grafana dashboard looks like:</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/posts/1-grafana.png" width="800"/><h2>Requirements</h2><p>In order to follow along, you will need only two things - <a href="https://docs.docker.com/engine/installation/">docker</a> - <a href="https://docs.docker.com/compose/install/">docker-compose</a> Follow the links for installation instructions. The versions used are docker 1.11 and docker-compose 1.7. Note that older versions will very likely work as well, but I have not tested it.</p><h2>Components</h2><p>Prometheus is a system originally developed by SoundCloud as part of a move towards a micro-service architecture. As such, it consists of a few moving parts that are launched and configured separately.</p><p>While this may be a bit more complicated to set up and manage on the surface, thanks to docker-compose it is actually quite easy to bundle everything up as a single service again with only one service definition file and (in our example) three configuration files.</p><p>Before we dive in, here’s a brief run-down of the components and what they do:</p><ul><li><strong>Prometheus</strong> – this is the central piece, it contains the time series database and the logic of scraping stats from exporters (see below) as well as alerts.</li><li><strong>Grafana</strong> is the ‘face’ of Prometheus. While Prometheus exposes some of its internals like settings and the stats it gathers via basic web front-ends, it delegates the heavy lifting of proper graphical displays and dashboards to Grafana.</li><li><strong>Alertmanager</strong> manages the routing of alerts which Prometheus raises to various different channels like email, pagers, slack - and so on. So while Prometheus collects stats and raises alerts it is completely agnostic of where these alerts should be displayed. This is where the alertmanager picks up.</li><li><strong>Exporters</strong> are http endpoints which expose ‘prometheus metrics’ for scraping by the Prometheus server. What this means is that this is a pull set-up. Note that it is also possible to set up a push-gateway which is essentially an intermediary push target which Prometheus can then scrape. This is useful for scenarios where pull is not appropriate or feasible (for example short lived processes).</li></ul><h2>Getting started</h2><h3>Launching Prometheus</h3><p>We’ll start off by launching Prometheus via a very simple docker-compose.yml configuration file</p><pre data-language="yaml"><code><span class="hljs-comment"># docker-compose.yml</span>
+<span class="hljs-attr">version:</span> <span class="hljs-string">'2'</span>
+<span class="hljs-attr">services:</span>
+<span class="hljs-attr">prometheus:</span>
+    <span class="hljs-attr">image:</span> <span class="hljs-string">prom/prometheus:0.18.0</span>
+    <span class="hljs-attr">volumes:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-string">./prometheus.yml:/etc/prometheus/prometheus.yml</span>
+    <span class="hljs-attr">command:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-string">'-config.file=/etc/prometheus/prometheus.yml'</span>
+    <span class="hljs-attr">ports:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-string">'9090:9090'</span>
+</code></pre><p>and a prometheus configuration file <code>prometheus.yml</code>:</p><pre data-language="yaml"><code><span class="hljs-comment"># prometheus.yml</span>
+<span class="hljs-attr">global:</span>
+    <span class="hljs-attr">scrape_interval:</span> <span class="hljs-string">5s</span>
+    <span class="hljs-attr">external_labels:</span>
+        <span class="hljs-attr">monitor:</span> <span class="hljs-string">'my-monitor'</span>
+<span class="hljs-attr">scrape_configs:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">job_name:</span> <span class="hljs-string">'prometheus'</span>
+      <span class="hljs-attr">target_groups:</span>
+          <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span> <span class="hljs-string">['localhost:9090']</span>
+</code></pre><p>As you can see, inside <code>docker-compose.yml</code> we map the prometheus config file into the container as a volume and add a <code>-config.file</code> parameter to the command pointing to this file.</p><p>To launch prometheus, run the command</p><pre data-language="bash"><code>docker-compose up
+</code></pre><p>Visit <a href="http://localhost:9090/status">http://localhost:9090/status</a> to confirm the server is up and running and the configuration is the one we provided.</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/posts/2-prometheus.png" width="800"/><h3>Targets</h3><p>Further down below the ‘Configuration’ on the status page you will find a section ‘Targets’ which lists a ‘prometheus’ endpoint. This corresponds to the <code>scrape_configs</code> setting by the same <code>job_name</code> and is a source of metrics provided by Prometheus. In other words, the Prometheus server comes with a metrics endpoint - or exporter, as we called it above - which reports stats for the Prometheus server itself.</p><p>The raw metrics can be inspected by visiting <a href="http://localhost:9090/metrics">http://localhost:9090/metrics</a>.</p><h3>Adding a node-exporter target</h3><p>While it’s certainly a good idea to monitor the monitoring service itself, this is just going to be an additional aspect of the set-up. The main point is to monitor other things by adding targets to the <code>scrape_configs</code> section in <code>prometheus.yml</code> . As described above, these targets need to export metric in the prometheus format.</p><p>One such exporter is <a href="https://github.com/prometheus/node_exporter">node-exporter</a>, another piece of the puzzle provided as part of Prometheus. What it does is collect system metrics like cpu/memory/storage usage and then it exports it for Prometheus to scrape. The beauty of this is that it can be run as a docker container while also reporting stats for the host system. It is therefore very easy to instrument any system that can run docker containers.</p><p>We will add a configuration setting to our existing <code>docker-compose.yml</code> to bring up <code>node-exporter</code> alongside <code>prometheus</code>. However, this is mainly for convenience in this example as in a normal setup where one prometheus instance is monitoring many other machines these other exporters would likely be launched by other means.</p><p>Here’s what our new <code>docker-compose.yml</code> looks like:</p><pre data-language="yaml"><code><span class="hljs-comment"># docker-compose.yml</span>
+<span class="hljs-attr">version:</span> <span class="hljs-string">'2'</span>
+<span class="hljs-attr">services:</span>
+    <span class="hljs-attr">prometheus:</span>
+        <span class="hljs-attr">image:</span> <span class="hljs-string">prom/prometheus:0.18.0</span>
+        <span class="hljs-attr">volumes:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-string">./prometheus.yml:/etc/prometheus/prometheus.yml</span>
+        <span class="hljs-attr">command:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-string">'-config.file=/etc/prometheus/prometheus.yml'</span>
+        <span class="hljs-attr">ports:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-string">'9090:9090'</span>
+    <span class="hljs-attr">node-exporter:</span>
+        <span class="hljs-attr">image:</span> <span class="hljs-string">prom/node-exporter:0.12.0rc1</span>
+        <span class="hljs-attr">ports:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-string">'9100:9100'</span>
+</code></pre><p>We simply added a <code>node-exporter</code> section. Configuring it as a target only requires a small extension to <code>prometheus.yml</code>:</p><pre data-language="yaml"><code><span class="hljs-comment"># prometheus.yml</span>
+<span class="hljs-attr">global:</span>
+    <span class="hljs-attr">scrape_interval:</span> <span class="hljs-string">5s</span>
+    <span class="hljs-attr">external_labels:</span>
+        <span class="hljs-attr">monitor:</span> <span class="hljs-string">'my-monitor'</span>
+<span class="hljs-attr">scrape_configs:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">job_name:</span> <span class="hljs-string">'prometheus'</span>
+      <span class="hljs-attr">target_groups:</span>
+          <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span> <span class="hljs-string">['localhost:9090']</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-attr">job_name:</span> <span class="hljs-string">'node-exporter'</span>
+      <span class="hljs-attr">target_groups:</span>
+          <span class="hljs-bullet">-</span> <span class="hljs-attr">targets:</span> <span class="hljs-string">['node-exporter:9100']</span>
+</code></pre><p>Note that we reference <code>node-exporter</code> by its service name which we specified in <code>docker-compose.yml</code> (the service label). Docker Compose makes the service available by that name for inter-container connectivity.</p><h2>Grafana</h2><p>At this point we’ve set up a Prometheus server in a basic configuration with two probes exporting metrics. If you’ve had a look around the Prometheus web front-end you’ve probably noticed that there’s a rudimentary interface in place to <a href="http://localhost:9090/graph#%5B%7B%22range_input%22%3A%221h%22%2C%22end_input%22%3A%22%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3A%22%22%2C%22expr%22%3A%22node_load1%22%2C%22tab%22%3A0%7D%2C%7B%22range_input%22%3A%221h%22%2C%22end_input%22%3A%22%22%2C%22step_input%22%3A%22%22%2C%22stacked%22%3A%22%22%2C%22expr%22%3A%22node_load1%22%2C%22tab%22%3A0%7D%5D">look at metrics</a>.</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/posts/3-grafana-graph.png" width="800"/><p>This helps to get an overview or take a quick look but Grafana offers a much more powerful picture, as the very first screenshot in this blog post shows.</p><p>Adding Grafana to our set-up is again a simple extension to <code>docker-compose.yml</code>. Append the following lines:</p><pre data-language="yaml"><code><span class="hljs-attr">grafana:</span>
+        <span class="hljs-attr">image:</span> <span class="hljs-string">grafana/grafana:3.0.0-beta7</span>
+        <span class="hljs-attr">environment:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-string">GF_SECURITY_ADMIN_PASSWORD=pass</span>
+        <span class="hljs-attr">depends_on:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-string">prometheus</span>
+        <span class="hljs-attr">ports:</span>
+            <span class="hljs-bullet">-</span> <span class="hljs-string">"3000:3000"</span>
+</code></pre><p>The complete final version version of all config files can be found in this <a href="https://github.com/finestructure/blogpost-prometheus">github repository</a>.</p><p>After restarting the service with</p><pre data-language="bash"><code>docker-compose up
+</code></pre><p>you can access Grafana at <a href="http://localhost:3000/login">http://localhost:3000/login</a>:</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/posts/4-grafana-login.png" width="800"/><h2>Persistence</h2><p>Up to this point we’ve simply set things up via configuration files to bring up the service and while we did record some metrics within the running containers we’ve not made any changes that we would necessarily want to keep around between restarts of the system.</p><p>Obviously this is fine for testing but before we go on to configure dashboards, we’ll want to make sure everything is actually persisted in docker volumes.</p><p>To do so, we append the following lines to our <code>docker-compose.yml</code> configuration file:</p><pre data-language="yaml"><code><span class="hljs-attr">volumes:</span>
+        <span class="hljs-attr">prometheus_data:</span> <span class="hljs-string">{}</span>
+        <span class="hljs-attr">grafana_data:</span> <span class="hljs-string">{}</span>
+</code></pre><p>This defines two data volumes, one for Prometheus and one for Grafana. To use them, add the following lines to their service definition (adding a new <code>volumes:</code> section to grafana‘s service definition):</p><pre data-language="yaml"><code><span class="hljs-attr">services:</span>
+        <span class="hljs-attr">prometheus:</span>
+            <span class="hljs-string">...</span>
+            <span class="hljs-attr">volumes:</span>
+                <span class="hljs-bullet">-</span> <span class="hljs-string">prometheus_data:/prometheus</span>
+                <span class="hljs-string">...</span>
+        <span class="hljs-attr">grafana:</span>
+            <span class="hljs-string">...</span>
+            <span class="hljs-attr">volumes:</span>
+                <span class="hljs-bullet">-</span> <span class="hljs-string">grafana_data:/var/lib/grafana</span>
+</code></pre><p>This tells <code>docker-compose</code> to map the docker volumes we’ve defined into the containers where their data directories are located. The docker volumes will be created if they don’t exist and will persist even after the containers are stopped and removed.</p><p>Now because we’ve been running the service before we need to remove the containers before we bring it back up again. (Otherwise you will get a <code>WARNING: Service "prometheus" is using volume "/prometheus" from the previous container</code>, going on to inform you that the volume will not be used.)</p><p>So we run</p><pre data-language="yaml"><code><span class="hljs-string">docker-compose</span> <span class="hljs-string">rm</span>
+</code></pre><p>followed by</p><pre data-language="yaml"><code><span class="hljs-string">docker-compose</span> <span class="hljs-string">up</span>
+</code></pre><p>and everything should be the same as before, except now we save all changes (and recorded metrics) to the specified docker volumes.</p><h2>Configuring Grafana</h2><p>As you’ve probably noticed, we’ve specified the admin user’s password in docker-compose.yml as <code>pass</code>. Use these credentials to log in and navigate to <a href="http://localhost:3000/datasources">http://localhost:3000/datasources</a> to set up our Prometheus server as the data source for Grafana. Give it a name, make sure you select “Prometheus” as the type, and set the URI to <code>http://prometheus:9090</code>.</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/posts/5-grafana-config.png" width="800"/><p>Note again that we can use the service name as the host name for the URI to connect Grafana to Prometheus.</p><p>Next head over to <a href="http://localhost:3000/dashboard/new">http://localhost:3000/dashboard/new</a> to create a new dashboard and add a graph:</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/posts/6-grafana-add-graph.png" width="800"/><p>Make sure to select “My Monitor” as the panel data source and after doing so you can use the metric lookup field to filter for any of the metrics available in Prometheus.</p><img src="https://f000.backblazeb2.com/file/finestructure-public-images/posts/7-grafana-panel.png" width="800"/><p>Grafana offers <a href="http://docs.grafana.org/reference/graph/">a lot of options</a> to create great looking graphs and all of this is extensively documented at <a href="http://docs.grafana.org">http://docs.grafana.org</a>.</p><h2>Limitations</h2><p>The current set-up has a few limitations which make it unsuitable to be run as-is except for testing and learning purposes:</p><ul><li>The Prometheus web front-end is exposed on port 9090 and freely accessible without authentication.</li><li>Grafana supports authentication but is not configured for SSL.</li></ul><p>In addition, while we display metrics in graphs we have not yet set up any automatic alerts that trigger when certain conditions are met. And these alerts should be delivered as notifications in various way, for example via email or a slack message.</p><p>Please see <a href="https://finestructure.co/blog/2016/6/9/monitoring-with-prometheus-grafana-docker-part-2">part 2 of this mini-series</a> where these limitations are being addressed.</p><p>If you have any questions or comments, please get in touch!</p></div>
+				<span>Tagged with: </span>
+				<ul class="tag-list"></ul>
+			</article>
+		</div>
+		<footer>
+			<div class="wrapper">
+				<div id="container">
+					<div id="left-footer"></div>
+					<div id="mid-footer"></div>
+					<div id="right-footer">
+						<p align="right">
+							<a href="/feed.rss">RSS feed</a>
+						</p>
+					</div>
+				</div>
+			</div>
+		</footer>
+	</body>
+</html>
